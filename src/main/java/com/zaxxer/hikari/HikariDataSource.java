@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static com.zaxxer.hikari.pool.HikariPool.POOL_NORMAL;
 
 /**
- * The HikariCP pooled DataSource.
+ * The HikariCP pooled DataSource
  *
  * @author Brett Wooldridge
  */
@@ -43,6 +43,10 @@ public class HikariDataSource extends HikariConfig implements DataSource, Closea
 
    private final AtomicBoolean isShutdown = new AtomicBoolean();
 
+   /*
+    * 指向了同一个连接池对象
+    * 原因：用 final 修饰的 fastPathPool 引用比用 volatile 修饰的 poll 引用在使用时效率更高。
+    */
    private final HikariPool fastPathPool;
    private volatile HikariPool pool;
 
@@ -74,8 +78,8 @@ public class HikariDataSource extends HikariConfig implements DataSource, Closea
     */
    public HikariDataSource(HikariConfig configuration)
    {
-      configuration.validate();
-      configuration.copyStateTo(this);
+      configuration.validate();                             // 参数校验
+      configuration.copyStateTo(this);                      //
 
       LOGGER.info("{} - Starting...", configuration.getPoolName());
       pool = fastPathPool = new HikariPool(this);
@@ -103,7 +107,7 @@ public class HikariDataSource extends HikariConfig implements DataSource, Closea
       // See http://en.wikipedia.org/wiki/Double-checked_locking#Usage_in_Java
       HikariPool result = pool;
       if (result == null) {
-         synchronized (this) {
+         synchronized (this) {         // 延迟初始化连接池，双重检验锁代码块
             result = pool;
             if (result == null) {
                validate();
