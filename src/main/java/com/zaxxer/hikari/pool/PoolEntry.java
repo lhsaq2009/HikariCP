@@ -32,25 +32,29 @@ import static com.zaxxer.hikari.util.ClockSource.*;
  * Entry used in the ConcurrentBag to track Connection instances.
  *
  * @author Brett Wooldridge
- *
- *
+ * <p>
+ * 在 HikariCP 中使用 PoolEntry 对链接实例 Connection 进行了封装，
+ * 记录了 Connection 相关的数据，如 Connection 实例、链接状态、当前活跃会话、对链接池引用等。
+ * <p>
+ * PoolEntry 也是 ConcurrentBag 管理的对象；
+ * sharedList 和 threadList 中保存的对象就是 PoolEntry 的实例
  */
 final class PoolEntry implements IConcurrentBagEntry {
     private static final Logger LOGGER = LoggerFactory.getLogger(PoolEntry.class);
-    private static final AtomicIntegerFieldUpdater<PoolEntry> stateUpdater;
+    private static final AtomicIntegerFieldUpdater<PoolEntry> stateUpdater;      // 用来更新链接的状态 state
 
-    Connection connection;
+    Connection connection;                                                       // 链接实例
     long lastAccessed;
     long lastBorrowed;
 
     @SuppressWarnings("FieldCanBeLocal")
-    private volatile int state = 0;
-    private volatile boolean evict;
+    private volatile int state = 0;                                              // 链接状态，如 STATE_IN_USE、STATE_NOT_IN_USE
+    private volatile boolean evict;                                              // 驱逐状态，删除该链接时标记为 true
 
     private volatile ScheduledFuture<?> endOfLife;
 
-    private final FastList<Statement> openStatements;
-    private final HikariPool hikariPool;
+    private final FastList<Statement> openStatements;                            // 当前打开的会话
+    private final HikariPool hikariPool;                                         // 链接池引用
 
     private final boolean isReadOnly;
     private final boolean isAutoCommit;
@@ -65,7 +69,7 @@ final class PoolEntry implements IConcurrentBagEntry {
         this.isReadOnly = isReadOnly;
         this.isAutoCommit = isAutoCommit;
         this.lastAccessed = currentTime();
-        this.openStatements = new FastList<>(Statement.class, 16);
+        this.openStatements = new FastList<>(Statement.class, 16);      //
     }
 
     /**
