@@ -31,12 +31,17 @@ import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
 /**
+ * 底层基于数组实现，目的是提高 List 操作的性能，主要用于 HikariCP 中缓存 Statement 实例和链接。
+ * 与 JDK 自带的 ArrayList 的主要优化：
+ *      1. 去掉了 add、get、remove 等操作时的范围检查。源码中 FastList 的注释为：Fast list without range checking
+ * <p>
  * Fast list without range checking.
+ * <p>
+ * FastList 实现了 List 接口，但并没有将所有方法都实现出来，对 HikariCP 中用不到的方法直接抛出了 UnsupportedOperationException
  *
  * @author Brett Wooldridge
  */
-public final class FastList<T> implements List<T>, RandomAccess, Serializable       //
-{
+public final class FastList<T> implements List<T>, RandomAccess, Serializable {
     private static final long serialVersionUID = -4598088075242913858L;
 
     private final Class<?> clazz;
@@ -50,6 +55,7 @@ public final class FastList<T> implements List<T>, RandomAccess, Serializable   
      */
     @SuppressWarnings("unchecked")
     public FastList(Class<?> clazz) {
+        // 默认 32 个元素，ArrayList 中默认数组长度为 10
         this.elementData = (T[]) Array.newInstance(clazz, 32);
         this.clazz = clazz;
     }
@@ -67,18 +73,34 @@ public final class FastList<T> implements List<T>, RandomAccess, Serializable   
     }
 
     /**
+     * 添加元素：
+     * 1. 新元素放在数组的尾端
+     * 2. 每次扩容时长度为旧数组的两倍
+     * <p>
+     * 看下 ArrayList 中的 add 方法：
+     * 1. 新元素放在数组的尾端
+     * 2. 每次扩容时长度为旧数组的 1.5 倍
+     * <p>
+     * public boolean add(E e) {
+     * // 检查数组空间是否充足，若空间不足，执行扩容操作，新数据是旧数组的 1.5 倍
+     * ensureCapacityInternal(size + 1);  // Increments modCount!!
+     * // 同样是尾插
+     * elementData[size++] = e;
+     * return true;
+     * }
+     * <p>
      * Add an element to the tail of the FastList.
      *
      * @param element the element to add
      */
     @Override
-    public boolean add(T element) {
+    public boolean add(T element) {                          // TODO：VS
         if (size < elementData.length) {
             elementData[size++] = element;
         } else {
             // overflow-conscious code
             final int oldCapacity = elementData.length;
-            final int newCapacity = oldCapacity << 1;
+            final int newCapacity = oldCapacity << 1;        // 每次扩容为旧数组的两倍
             @SuppressWarnings("unchecked") final T[] newElementData = (T[]) Array.newInstance(clazz, newCapacity);
             System.arraycopy(elementData, 0, newElementData, 0, oldCapacity);
             newElementData[size++] = element;
@@ -89,6 +111,15 @@ public final class FastList<T> implements List<T>, RandomAccess, Serializable   
     }
 
     /**
+     * 查询元素
+     * 不做范围检查，直接返回数组下标。
+     * <p>
+     * 在 HikariCP 中，FastList 用于保存 Statement 和链接，程序可以保证 FastList 的元素不会越界，这样可以省去范围检查的耗时。
+     * <p>
+     * TODO：VS 同样看下 ArrayList 里的 get()
+     *   // 先做范围检查，如果数组越界，抛出 IndexOutOfBoundsException
+     *   rangeCheck(index);
+     * <p>
      * Get the element at the specified index.
      *
      * @param index the index of the element to get
@@ -176,6 +207,9 @@ public final class FastList<T> implements List<T>, RandomAccess, Serializable   
     }
 
     /**
+     * 删除元素
+     * 而 Statement 通过是后创建出来的先被 Close 掉，这样可以提高查询效率。
+     * <p>
      * {@inheritDoc}
      */
     @Override
@@ -183,6 +217,8 @@ public final class FastList<T> implements List<T>, RandomAccess, Serializable   
         if (size == 0) {
             return null;
         }
+
+        // TODO：该版本，没有：从后往前遍历
 
         final T old = elementData[index];
 
