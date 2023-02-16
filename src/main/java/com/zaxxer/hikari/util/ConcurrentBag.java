@@ -97,13 +97,13 @@ public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseab
         this.listener = listener;
         this.weakThreadLocals = useWeakThreadLocals();
 
-        this.handoffQueue = new SynchronousQueue<>(true);
+        this.handoffQueue = new SynchronousQueue<>(true);       // 初始化，略
         this.waiters = new AtomicInteger();
         this.sharedList = new CopyOnWriteArrayList<>();
         if (weakThreadLocals) {
             this.threadList = ThreadLocal.withInitial(() -> new ArrayList<>(16));
         } else {
-            this.threadList = ThreadLocal.withInitial(() -> new FastList<>(IConcurrentBagEntry.class, 16));
+            this.threadList = ThreadLocal.withInitial(() -> new FastList<>(IConcurrentBagEntry.class, 16));     //
         }
     }
 
