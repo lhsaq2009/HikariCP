@@ -157,7 +157,7 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
      * @throws SQLException thrown if a timeout occurs trying to obtain a connection
      */
     public Connection getConnection() throws SQLException {
-        return getConnection(connectionTimeout);
+        return getConnection(connectionTimeout);            // =>>
     }
 
     /**
@@ -167,8 +167,8 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
      * @return a java.sql.Connection instance
      * @throws SQLException thrown if a timeout occurs trying to obtain a connection
      */
-    public Connection getConnection(final long hardTimeout) throws SQLException {
-        suspendResumeLock.acquire();
+    public Connection getConnection(final long hardTimeout) throws SQLException {                   //
+        suspendResumeLock.acquire();                        // 获取信号量
         final long startTime = currentTime();
 
         try {
@@ -493,12 +493,14 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
     /**
      * Fill pool up from current idle connections (as they are perceived at the point of execution) to minimumIdle connections.
      */
-    private synchronized void fillPool() {
+    private synchronized void fillPool() {          // 填满最小所需连接数
+        // 检查是否达到池数量上限，是否达到空闲上限，并且 新增连接任务数量不足
         final int connectionsToAdd = Math.min(config.getMaximumPoolSize() - getTotalConnections(), config.getMinimumIdle() - getIdleConnections())
                 - addConnectionQueueReadOnlyView.size();
         if (connectionsToAdd <= 0) logger.debug("{} - Fill pool skipped, pool is at sufficient level.", poolName);
 
         for (int i = 0; i < connectionsToAdd; i++) {
+            // i 从 0 开始，所以 connectionsToAdd - 1；TODO：多提交一个新增任务，备用 ？？
             addConnectionExecutor.submit((i < connectionsToAdd - 1) ? poolEntryCreator : postFillPoolEntryCreator);
         }
     }
