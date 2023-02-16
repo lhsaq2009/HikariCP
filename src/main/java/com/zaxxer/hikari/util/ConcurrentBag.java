@@ -71,10 +71,11 @@ public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseab
     private final SynchronousQueue<T> handoffQueue;             // 接力队列，用于存在资源等待线程时的第一手资源交接
 
     public interface IConcurrentBagEntry {
-        int STATE_NOT_IN_USE = 0;
-        int STATE_IN_USE = 1;
-        int STATE_REMOVED = -1;
-        int STATE_RESERVED = -2;
+        // 定义链接的状态
+        int STATE_NOT_IN_USE = 0;                               // 未使用。可以被借走
+        int STATE_IN_USE = 1;                                   // 正在使用。
+        int STATE_REMOVED = -1;                                 // 被移除，只有调用 remove() 时会 CAS 改变为这个状态，修改成功后会从容器中被移除。
+        int STATE_RESERVED = -2;                                // 被保留，不能被使用。往往是移除前执行保留操作。
 
 
         boolean compareAndSet(int expectState, int newState);   // CAS 对链接状态的操作
@@ -117,35 +118,44 @@ public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseab
      * @throws InterruptedException if interrupted while waiting
      */
     public T borrow(long timeout, final TimeUnit timeUnit) throws InterruptedException {
-        // Try the thread-local list first
+        // 01、先看是否能从 ThreadList 中拿到可用链接，这里的 List 通常为 FastList ；Try the thread-local list first
         final List<Object> list = threadList.get();
-        for (int i = list.size() - 1; i >= 0; i--) {
-            final Object entry = list.remove(i);
+        for (int i = list.size() - 1; i >= 0; i--) {                // TODO：倒序获取，为什么从尾部？？
+            final Object entry = list.remove(i);             // 从尾部好处不需要移动底层数组
+            // ThreadLocal Key 一定是弱引用；获取链接，「连接」可能使用了弱引用
             @SuppressWarnings("unchecked") final T bagEntry = weakThreadLocals ? ((WeakReference<T>) entry).get() : (T) entry;
+            // 如果能够获取「连接」且可用：STATE_NOT_IN_USE => STATE_IN_USE
             if (bagEntry != null && bagEntry.compareAndSet(STATE_NOT_IN_USE, STATE_IN_USE)) {
                 return bagEntry;
             }
         }
 
-        // Otherwise, scan the shared list ... then poll the handoff queue
-        final int waiting = waiters.incrementAndGet();
+        // 2. 如果 ThreadList 中没有可用的链接，则尝试从「共享集合」中获取链接；Otherwise, scan the shared list ... then poll the handoff queue
+        final int waiting = waiters.incrementAndGet();                      //
         try {
             for (T bagEntry : sharedList) {
                 if (bagEntry.compareAndSet(STATE_NOT_IN_USE, STATE_IN_USE)) {
                     // If we may have stolen another waiter's connection, request another bag add.
-                    if (waiting > 1) {
-                        listener.addBagItem(waiting - 1);
+                    if (waiting > 1) {                                      // TODO：考虑公平 ？？？
+                        // why? 这里可能把其它线程，提交的 addBagIte() 任务结果 ( poolEntry ) 给窃取了 ..
+                        listener.addBagItem(waiting - 1);           // 通知监听器添加链接
                     }
                     return bagEntry;
                 }
             }
 
-            listener.addBagItem(waiting);
+            /**
+             * {@link com.zaxxer.hikari.pool.HikariPool.PoolEntryCreator#call}
+             * =>> {@link com.zaxxer.hikari.pool.HikariPool#createPoolEntry}
+             */
+            listener.addBagItem(waiting);                                   // =>> 考虑现有任务数量，可能会提交新任务 ( 添加 PoolEntry )
 
+            // 3. 尝试从 handoffQueue 队列中获取。在等待时可能链接被新建 或 改为转为可用状态
+            // SynchronousQueue 是一种无容量的 BlockingQueue，在 poll 时如果没有元素，则阻塞等待 timeout 时间
             timeout = timeUnit.toNanos(timeout);
             do {
                 final long start = currentTime();
-                final T bagEntry = handoffQueue.poll(timeout, NANOSECONDS);
+                final T bagEntry = handoffQueue.poll(timeout, NANOSECONDS);     // 等 new add 传递过来，
                 if (bagEntry == null || bagEntry.compareAndSet(STATE_NOT_IN_USE, STATE_IN_USE)) {
                     return bagEntry;
                 }
