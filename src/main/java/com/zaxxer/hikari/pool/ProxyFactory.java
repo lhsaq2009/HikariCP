@@ -43,9 +43,29 @@ public final class ProxyFactory {
      * @param isReadOnly     the default readOnly state of the connection
      * @param isAutoCommit   the default autoCommit state of the connection
      * @return a proxy that wraps the specified {@link Connection}
+     *
+     * 创建了一个代理连接 ProxyConnection，
+     * 从抛出异常之前的注释可以看出在会通过 JavassistProxyFactory 生成具体的代码。编译生成的代码会替换掉 getProxyConnection 的方法体
+     *
+     * getProxyConnection 的方法体是 JavassistProxyFactory#generateProxyClass 生成的。其字节码技术为 javassist，
+     * 之所以采用 javassist，是因为其生成的字节码更加精简。这一点在官方 wiki 有提到，也是 HikariCP 表现得性能很快的原因之一。
+     *
+     *
+     * 通过 Jar 查看生产的结果类：
+     * 方法体：return new HikariProxyConnection(var0, var1, var2, var3, var4, var6, var7);
+     *
+     * public class HikariProxyConnection extends ProxyConnection implements Wrapper, AutoCloseable, Connection {
+     *      public Statement createStatement() throws SQLException {
+     *      public Statement createStatement(int var1, int var2) throws SQLException {
+     *      public PreparedStatement prepareStatement(String var1) throws SQLException {
+     *      public PreparedStatement prepareStatement(String var1, int var2, int var3) throws SQLException {
+     *      public void commit() throws SQLException {
+     *      public void rollback() throws SQLException {
+     *      public Savepoint setSavepoint(String var1) throws SQLException {
+     *
      */
     static ProxyConnection getProxyConnection(final PoolEntry poolEntry, final Connection connection, final FastList<Statement> openStatements, final ProxyLeakTask leakTask, final long now, final boolean isReadOnly, final boolean isAutoCommit) {
-        // Body is replaced (injected) by JavassistProxyFactory
+        // Body is replaced (injected) by JavassistProxyFactory     // =>>
         throw new IllegalStateException("You need to run the CLI build and you need target/classes in your classpath to run.");
     }
 
