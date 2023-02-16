@@ -38,7 +38,7 @@ import javassist.bytecode.ClassFile;
  *
  * @author Brett Wooldridge
  */
-public final class JavassistProxyFactory
+public final class JavassistProxyFactory           //
 {
    private static ClassPool classPool;
    private static String genDirectory = "";
@@ -64,7 +64,7 @@ public final class JavassistProxyFactory
       generateProxyClass(PreparedStatement.class, ProxyPreparedStatement.class.getName(), methodBody);
       generateProxyClass(CallableStatement.class, ProxyCallableStatement.class.getName(), methodBody);
 
-      modifyProxyFactory();
+      modifyProxyFactory();         // =>>
    }
 
    private static void modifyProxyFactory() throws NotFoundException, CannotCompileException, IOException {
