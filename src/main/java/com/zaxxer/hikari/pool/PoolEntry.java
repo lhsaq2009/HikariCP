@@ -49,6 +49,8 @@ final class PoolEntry implements IConcurrentBagEntry {
 
     @SuppressWarnings("FieldCanBeLocal")
     private volatile int state = 0;                                              // 链接状态，如 STATE_IN_USE、STATE_NOT_IN_USE
+
+    // 新建连接时，搭配对应延时任务来标记，poolEntry.setFutureEol(houseKeepingExecutorService.schedule(
     private volatile boolean evict;                                              // 驱逐状态，删除该链接时标记为 true
 
     private volatile ScheduledFuture<?> endOfLife;
@@ -80,7 +82,7 @@ final class PoolEntry implements IConcurrentBagEntry {
     void recycle(final long lastAccessed) {
         if (connection != null) {
             this.lastAccessed = lastAccessed;
-            hikariPool.recycle(this);
+            hikariPool.recycle(this);       // =>> 归还链接
         }
     }
 
