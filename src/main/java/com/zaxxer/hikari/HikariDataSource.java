@@ -78,8 +78,8 @@ public class HikariDataSource extends HikariConfig implements DataSource, Closea
     */
    public HikariDataSource(HikariConfig configuration)
    {
-      configuration.validate();                             // 参数校验
-      configuration.copyStateTo(this);                      //
+      configuration.validate();                                      // 参数校验
+      configuration.copyStateTo(this);                        //
 
       LOGGER.info("{} - Starting...", configuration.getPoolName());
       pool = fastPathPool = new HikariPool(this);            // 1 有参 HikariDataSource(..)
@@ -334,7 +334,7 @@ public class HikariDataSource extends HikariConfig implements DataSource, Closea
     *
     * @param connection the connection to evict from the pool
     */
-   public void evictConnection(Connection connection)
+   public void evictConnection(Connection connection)    // 用户代码：ds.evictConnection(conn); 主动逐出连接
    {
       HikariPool p;
       if (!isClosed() && (p = pool) != null && connection.getClass().getName().startsWith("com.zaxxer.hikari")) {
@@ -346,7 +346,7 @@ public class HikariDataSource extends HikariConfig implements DataSource, Closea
     * Shutdown the DataSource and its associated pool.
     */
    @Override
-   public void close()
+   public void close()        // 关闭连接池
    {
       if (isShutdown.getAndSet(true)) {
          return;
