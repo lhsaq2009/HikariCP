@@ -218,11 +218,11 @@ public final class FastList<T> implements List<T>, RandomAccess, Serializable {
             return null;
         }
 
-        // TODO：该版本，没有：从后往前遍历
+        // TODO：该版本，没有：从后往前遍历；在外层使用处倒序吗？？
 
         final T old = elementData[index];
 
-        final int numMoved = size - index - 1;
+        final int numMoved = size - index - 1;      // 从尾部是不需要移动数组的，
         if (numMoved > 0) {
             System.arraycopy(elementData, index + 1, elementData, index, numMoved);
         }
