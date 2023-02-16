@@ -264,7 +264,7 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
      *
      * @param connection the Connection to evict (actually a {@link ProxyConnection})
      */
-    public void evictConnection(Connection connection) {
+    public void evictConnection(Connection connection) {            // 用户主动调用驱逐连接
         ProxyConnection proxyConnection = (ProxyConnection) connection;
         proxyConnection.cancelLeakTask();
 
@@ -433,7 +433,7 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
     void recycle(final PoolEntry poolEntry) {
         metricsTracker.recordConnectionUsage(poolEntry);
 
-        connectionBag.requite(poolEntry);
+        connectionBag.requite(poolEntry);       // =>> 归还链接
     }
 
     /**
@@ -442,11 +442,11 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
      * @param poolEntry     poolEntry having the connection to close
      * @param closureReason reason to close
      */
-    void closeConnection(final PoolEntry poolEntry, final String closureReason) {
-        if (connectionBag.remove(poolEntry)) {
-            final Connection connection = poolEntry.close();
-            closeConnectionExecutor.execute(() -> {
-                quietlyCloseConnection(connection, closureReason);
+    void closeConnection(final PoolEntry poolEntry, final String closureReason) {       // 移除连接：可能过期，
+        if (connectionBag.remove(poolEntry)) {                                 // 切换状态 & 从容器删除
+            final Connection connection = poolEntry.close();                            // 移除过期任务
+            closeConnectionExecutor.execute(() -> {             //
+                quietlyCloseConnection(connection, closureReason);      // connection.close();
                 if (poolState == POOL_NORMAL) {
                     fillPool();
                 }
@@ -601,7 +601,7 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
      * @return true if the connection was evicted (closed), false if it was merely marked for eviction
      */
     private boolean softEvictConnection(final PoolEntry poolEntry, final String reason, final boolean owner) {
-        poolEntry.markEvicted();
+        poolEntry.markEvicted();            // 标记连接：逐出
         if (owner || connectionBag.reserve(poolEntry)) {
             closeConnection(poolEntry, reason);
             return true;
