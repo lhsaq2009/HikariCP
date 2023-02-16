@@ -170,7 +170,7 @@ final class PoolEntry implements IConcurrentBagEntry {
     }
 
     Connection close() {
-        ScheduledFuture<?> eol = endOfLife;
+        ScheduledFuture<?> eol = endOfLife;         // 移除连接的过期延时任务；
         if (eol != null && !eol.isDone() && !eol.cancel(false)) {
             LOGGER.warn("{} - maxLifeTime expiration task cancellation unexpectedly returned false for connection {}", getPoolName(), connection);
         }
