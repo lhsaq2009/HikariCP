@@ -51,6 +51,14 @@ import static java.util.concurrent.locks.LockSupport.parkNanos;
  * even if the reference is abandoned.  Thus care must be taken to
  * "requite" borrowed objects otherwise a memory leak will result.  Only
  * the "remove" method can completely remove an object from the bag.
+ * <p>
+ * ConcurrentBag 是为追求链接池操作高性能而设计的并发工具。
+ * 它使用 ThreadLocal 缓存来避免锁争抢，当 ThreadLocal 中没有可用的链接时会去公共集合中“借用”链接。
+ * ThreadLocal 中处于 Not-in-use 状态的链接也可能会“借走”。
+ * ConcurrentBag 使用 AbstractQueuedLongSynchronizer 来管理跨线程通信（实际新版本已经删掉了 AbstractQueuedLongSynchronizer ）。
+ * <p>
+ * 注意被“借走”的链接并没有从任何集合中删除，所以即使链接的引用被弃用也不会进行 gc。
+ * 所以要及时将被“借走”的链接归还回来，否则可能会发生内存泄露。只有 remove 方法才会真正将链接从 ConcurrentBag 中删除。
  *
  * @param <T> the templated type to store in the bag
  * @author Brett Wooldridge
@@ -109,6 +117,13 @@ public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseab
     }
 
     /**
+     * 2、获取链接
+     * <p>
+     * 链接获取顺序：
+     * 1. 从线程本地缓存 ThreadList 中获取，这里保持的是该线程之前使用过的链接
+     * 2. 从共享集合 sharedList 中获取，如果获取不到，会通知 listener 新建链接（但不一定真的会新建链接出来）
+     * 3. 从 handoffQueue 中阻塞获取，新建的链接 或 一些转为可用的链接会放入该队列中
+     * <p>
      * The method will borrow a BagEntry from the bag, blocking for the
      * specified timeout if none are available.
      *
@@ -170,6 +185,18 @@ public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseab
     }
 
     /**
+     * 3、归还「连接」
+     * <p>
+     * 归还「连接」的顺序：
+     *      1. 将「连接」置为可用状态 STATE_NOT_IN_USE
+     *
+     *      2. 如果有等待「连接」的线程，则将该「连接」通过 handoffQueue.offer(bagEntry) 给出去
+     *         由于该「连接」可能在当前线程的 threadList 里，所以可以发现 A 线程的 threadList 中的「连接」可能被 B 线程使用
+     *
+     *      3. 将它放入当前线程的 theadList 中，
+     *         这里可以看出来 threadList 一开始是空的，当线程从 sharedList 中借用了「连接」并使用完后，会放入自己的缓存中
+     * <p>
+     *
      * This method will return a borrowed object to the bag.  Objects
      * that are borrowed from the bag but never "requited" will result
      * in a memory leak.
@@ -178,26 +205,34 @@ public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseab
      * @throws NullPointerException  if value is null
      * @throws IllegalStateException if the bagEntry was not borrowed from the bag
      */
-    public void requite(final T bagEntry) {
+    public void requite(final T bagEntry) {     // 归还「连接」
+
+        // 1. 将「连接」状态改为 STATE_NOT_IN_USE
         bagEntry.setState(STATE_NOT_IN_USE);
 
+        // 2. 如果有等待「连接」的线程，将该「连接」交出去
         for (int i = 0; waiters.get() > 0; i++) {
-            if (bagEntry.getState() != STATE_NOT_IN_USE || handoffQueue.offer(bagEntry)) {
-                return;
-            } else if ((i & 0xff) == 0xff) {
+            if (bagEntry.getState() != STATE_NOT_IN_USE || handoffQueue.offer(bagEntry)) {  // 归还链接时，接力：提供；非阻塞立即返回：true/false
+                return;                                                                        // 若交出去，则直 return 了
+            } else if ((i & 0xff) == 0xff) {                                                   // 如果循环了 255 次，把当前线程挂起一会
                 parkNanos(MICROSECONDS.toNanos(10));
             } else {
                 Thread.yield();
             }
         }
 
-        final List<Object> threadLocalList = threadList.get();
+        // 3. TODO：将连接放入线程本地缓存 ThreadList 中；目的是是访问快 ？？      如果没有等待者或者循环了一圈没能放入交接队列，则放入 ThreadLocal
+        final List<Object> threadLocalList = threadList.get();      // 写入
         if (threadLocalList.size() < 50) {
             threadLocalList.add(weakThreadLocals ? new WeakReference<>(bagEntry) : bagEntry);
         }
     }
 
     /**
+     * 1、增加链接
+     * <p>
+     * 将新的链接放入 sharedList 中，如果有等待链接的线程，则将链接给该线程。
+     * <p>
      * Add a new object to the bag for others to borrow.
      *
      * @param bagEntry an object to add to the bag
@@ -209,10 +244,10 @@ public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseab
         }
 
         sharedList.add(bagEntry);
-
-        // spin until a thread takes it or none are waiting
-        while (waiters.get() > 0 && bagEntry.getState() == STATE_NOT_IN_USE && !handoffQueue.offer(bagEntry)) {
-            Thread.yield();
+        // TODO：为什么要子自旋等待呢？？扔进 sharedList 就好呀. 2023-02-16
+        // 等待直到没有 waiter 或有线程拿走它；spin until a thread takes it or none are waiting
+        while (waiters.get() > 0 && bagEntry.getState() == STATE_NOT_IN_USE && !handoffQueue.offer(bagEntry)) {     // TODO：?? 为什么通过 容器传递 ？？
+            Thread.yield();     // yield 什么都不做，只是为了让渡 CPU 使用，避免长期占用
         }
     }
 
@@ -300,10 +335,10 @@ public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseab
      * @param bagEntry the item to unreserve
      */
     @SuppressWarnings("SpellCheckingInspection")
-    public void unreserve(final T bagEntry) {
+    public void unreserve(final T bagEntry) {       // 源码里并无使用呀，
         if (bagEntry.compareAndSet(STATE_RESERVED, STATE_NOT_IN_USE)) {
             // spin until a thread takes it or none are waiting
-            while (waiters.get() > 0 && !handoffQueue.offer(bagEntry)) {
+            while (waiters.get() > 0 && !handoffQueue.offer(bagEntry)) {        // 没有调用处呢，不关注这
                 Thread.yield();
             }
         } else {
