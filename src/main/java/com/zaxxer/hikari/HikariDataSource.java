@@ -129,7 +129,11 @@ public class HikariDataSource extends HikariConfig implements DataSource, Closea
          }
       }
 
-      return result.getConnection();
+      // 将 PoolEntry 中的 Connection 实例包装为代理对象 HikariProxyConnection 提供给用户  ---- TODO：
+
+      // 当 getConnection 从 ConcurrentBag 中获取 PoolEntry 失败，
+      // 执行 HikariPool#addBagItem 提交 PoolEntryCreator 到线程池，异步创建 PoolEntry 放入 ConcurrentBag
+      return result.getConnection();                  // =>> 2
    }
 
    /** {@inheritDoc} */

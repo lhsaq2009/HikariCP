@@ -36,7 +36,7 @@ class ProxyLeakTaskFactory
    }
 
    ProxyLeakTask schedule(final PoolEntry poolEntry)
-   {
+   {     // 创建连接泄露检测任务。详情如下：leakDetectionThreshold 不为 0 时，进行连接泄露检测；
       return (leakDetectionThreshold == 0) ? ProxyLeakTask.NO_LEAK : scheduleNewTask(poolEntry);
    }
 
@@ -46,7 +46,7 @@ class ProxyLeakTaskFactory
    }
 
    private ProxyLeakTask scheduleNewTask(PoolEntry poolEntry) {
-      ProxyLeakTask task = new ProxyLeakTask(poolEntry);
+      ProxyLeakTask task = new ProxyLeakTask(poolEntry);    // =>>
       task.schedule(executorService, leakDetectionThreshold);
 
       return task;

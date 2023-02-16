@@ -958,7 +958,7 @@ public class HikariConfig implements HikariConfigMXBean
    public void validate()
    {
       if (poolName == null) {
-         poolName = generatePoolName();
+         poolName = generatePoolName();      // HikariPool-1，从系统变量（ com.zaxxer.hikari.pool_number ）中获取，每次自增
       }
       else if (isRegisterMbeans && poolName.contains(":")) {
          throw new IllegalArgumentException("poolName cannot contain ':' when used with JMX");

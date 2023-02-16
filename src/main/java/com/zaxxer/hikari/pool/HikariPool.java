@@ -94,7 +94,7 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
 
     private final ConcurrentBag<PoolEntry> connectionBag;
 
-    private final ProxyLeakTaskFactory leakTaskFactory;
+    private final ProxyLeakTaskFactory leakTaskFactory;             //
     private final SuspendResumeLock suspendResumeLock;
 
     private final ScheduledExecutorService houseKeepingExecutorService;     // 1、定时检查过期，2、连接过期重新获取，3、泄露检查
@@ -551,7 +551,7 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
 
         final long startTime = currentTime();
         do {
-            final PoolEntry poolEntry = createPoolEntry();
+            final PoolEntry poolEntry = createPoolEntry();          // 1、Pool 初始化，进行快速检查时，获取连接
             if (poolEntry != null) {
                 if (config.getMinimumIdle() > 0) {
                     connectionBag.add(poolEntry);
@@ -634,7 +634,7 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
      */
     private void destroyHouseKeepingExecutorService() {
         if (config.getScheduledExecutor() == null) {
-            houseKeepingExecutorService.shutdownNow();
+            houseKeepingExecutorService.shutdownNow();      // 随连接池关闭而关闭
         }
     }
 
@@ -708,7 +708,7 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
             while (poolState == POOL_NORMAL && shouldCreateAnotherConnection()) {
                 final PoolEntry poolEntry = createPoolEntry();          // =>> 2、addBagItem(..);
                 if (poolEntry != null) {
-                    connectionBag.add(poolEntry);                       // sharedList.add(bagEntry);
+                    connectionBag.add(poolEntry);                       // sharedList.add(bagEntry);  + handoffQueue.offer(bagEntry)
                     logger.debug("{} - Added connection {}", poolName, poolEntry.connection);
                     if (loggingPrefix != null) {
                         logPoolState(loggingPrefix);
@@ -773,6 +773,7 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
 
                 previous = now;
 
+                // 检查是否存在超额的空闲超时的连接
                 String afterPrefix = "Pool ";
                 if (idleTimeout > 0L && config.getMinimumIdle() < config.getMaximumPoolSize()) {
                     logPoolState("Before cleanup ");
@@ -782,7 +783,7 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
                     int toRemove = notInUse.size() - config.getMinimumIdle();
                     for (PoolEntry entry : notInUse) {
                         if (toRemove > 0 && elapsedMillis(entry.lastAccessed, now) > idleTimeout && connectionBag.reserve(entry)) {
-                            closeConnection(entry, "(connection has passed idleTimeout)");
+                            closeConnection(entry, "(connection has passed idleTimeout)");      // =>>
                             toRemove--;
                         }
                     }
