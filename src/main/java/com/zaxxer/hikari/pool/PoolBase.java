@@ -126,7 +126,7 @@ abstract class PoolBase {
     //                           JDBC methods
     // ***********************************************************************
 
-    void quietlyCloseConnection(final Connection connection, final String closureReason) {
+    void quietlyCloseConnection(final Connection connection, final String closureReason) {          // connection.close();
         if (connection != null) {
             try {
                 logger.debug("{} - Closing connection {}: {}", poolName, connection, closureReason);
@@ -339,7 +339,7 @@ abstract class PoolBase {
                 throw new SQLTransientConnectionException("DataSource returned null unexpectedly");
             }
 
-            setupConnection(connection);
+            setupConnection(connection);                    // 初始化连接的一些参数，比如 readOnly，autoCommit
             lastConnectionFailure.set(null);
             return connection;
         } catch (Exception e) {
