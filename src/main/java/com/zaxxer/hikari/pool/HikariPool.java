@@ -86,15 +86,18 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
     private final PoolEntryCreator poolEntryCreator = new PoolEntryCreator(null /*logging prefix*/);
     private final PoolEntryCreator postFillPoolEntryCreator = new PoolEntryCreator("After adding ");
     private final Collection<Runnable> addConnectionQueueReadOnlyView;
-    private final ThreadPoolExecutor addConnectionExecutor;
-    private final ThreadPoolExecutor closeConnectionExecutor;
+
+    // 1-1，5s 核心线程空闲过期
+    private final ThreadPoolExecutor addConnectionExecutor;         // 负责创建连接 ( PoolEntry ) 的线程池    ； HikariPool-1 connection adder",
+    // 1-1，5s 核心线程空闲过期
+    private final ThreadPoolExecutor closeConnectionExecutor;       // 负责移除连接      ； HikariPool-1 connection closer",
 
     private final ConcurrentBag<PoolEntry> connectionBag;
 
     private final ProxyLeakTaskFactory leakTaskFactory;
     private final SuspendResumeLock suspendResumeLock;
 
-    private final ScheduledExecutorService houseKeepingExecutorService;
+    private final ScheduledExecutorService houseKeepingExecutorService;     // 1、定时检查过期，2、连接过期重新获取，3、泄露检查
     private ScheduledFuture<?> houseKeeperTask;
 
     /**
@@ -107,10 +110,10 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
 
         this.connectionBag = new ConcurrentBag<>(this);
         this.suspendResumeLock = config.isAllowPoolSuspension() ? new SuspendResumeLock() : SuspendResumeLock.FAUX_LOCK;
+        // 创建⼀个指定⼤⼩的线程池，⽀持定时 及 周期性 任务执⾏
+        this.houseKeepingExecutorService = initializeHouseKeepingExecutorService();     // 初始化线程池，min = 1，max = MAX_VALUE，keepAliveTime = 0 ( 空闲立即清理 )
 
-        this.houseKeepingExecutorService = initializeHouseKeepingExecutorService();
-
-        checkFailFast();
+        checkFailFast();                            // 检查与数据库连通性，如果有问题直接快速失败
 
         if (config.getMetricsTrackerFactory() != null) {
             setMetricsTrackerFactory(config.getMetricsTrackerFactory());
@@ -132,8 +135,7 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
 
         this.leakTaskFactory = new ProxyLeakTaskFactory(config.getLeakDetectionThreshold(), houseKeepingExecutorService);
 
-        this.houseKeeperTask = houseKeepingExecutorService.scheduleWithFixedDelay(new HouseKeeper(), 100L, housekeepingPeriodMs, MILLISECONDS);
-
+        // 是否需要等待连接池充满；
         if (Boolean.getBoolean("com.zaxxer.hikari.blockUntilFilled") && config.getInitializationFailTimeout() > 1) {
             addConnectionExecutor.setCorePoolSize(Math.min(16, Runtime.getRuntime().availableProcessors()));
             addConnectionExecutor.setMaximumPoolSize(Math.min(16, Runtime.getRuntime().availableProcessors()));
