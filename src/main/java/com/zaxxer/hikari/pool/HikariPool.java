@@ -177,29 +177,32 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
         try {
             long timeout = hardTimeout;
             do {
-                PoolEntry poolEntry = connectionBag.borrow(timeout, MILLISECONDS);
+                PoolEntry poolEntry = connectionBag.borrow(timeout, MILLISECONDS);        // =>> 借
                 if (poolEntry == null) {
-                    break; // We timed out... break and throw exception
+                    break;                                  // borrow 超时返回空，结束循环；We timed out... break and throw exception
                 }
 
-            final long now = currentTime();
-            if (poolEntry.isMarkedEvicted() || (elapsedMillis(poolEntry.lastAccessed, now) > aliveBypassWindowMs && !isConnectionAlive(poolEntry.connection))) {
-               closeConnection(poolEntry, poolEntry.isMarkedEvicted() ? EVICTED_CONNECTION_MESSAGE : DEAD_CONNECTION_MESSAGE);
-               timeout = hardTimeout - elapsedMillis(startTime);
-            }
-            else {
-               metricsTracker.recordBorrowStats(poolEntry, startTime);
-               return poolEntry.createProxyConnection(leakTaskFactory.schedule(poolEntry), now);
-            }
-         } while (timeout > 0L);
+                final long now = currentTime();
+                // poolEntry 被驱逐 或 非存活状态
+                // 判断上次 entry 被使用的时间距离现在是否超过 aliveBypassWindowMs 默认 500ms。若超过则检查存活检查。频繁的请求则省去检查。
+                if (poolEntry.isMarkedEvicted() || (elapsedMillis(poolEntry.lastAccessed, now) > aliveBypassWindowMs && !isConnectionAlive(poolEntry.connection))) {
+                    // 关闭连接
+                    closeConnection(poolEntry, poolEntry.isMarkedEvicted() ? EVICTED_CONNECTION_MESSAGE : DEAD_CONNECTION_MESSAGE);
+                    timeout = hardTimeout - elapsedMillis(startTime);
+                } else {
+                    metricsTracker.recordBorrowStats(poolEntry, startTime);
+                    // 创建连接代理，绑定泄露检测任务，
+                    return poolEntry.createProxyConnection(leakTaskFactory.schedule(poolEntry), now);       // 绑定泄露定时任务
+                }
+            } while (timeout > 0L);
 
             metricsTracker.recordBorrowTimeoutStats(startTime);
-            throw createTimeoutException(startTime);
+            throw createTimeoutException(startTime);        // 超时抛出异常
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new SQLException(poolName + " - Interrupted during connection acquisition", e);
         } finally {
-            suspendResumeLock.release();
+            suspendResumeLock.release();                    // 释放信号量
         }
     }
 
