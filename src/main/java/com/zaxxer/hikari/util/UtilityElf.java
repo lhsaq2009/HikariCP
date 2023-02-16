@@ -120,7 +120,7 @@ public final class UtilityElf
 
       LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<>(queueSize);
       ThreadPoolExecutor executor = new ThreadPoolExecutor(1 /*core*/, 1 /*max*/, 5 /*keepalive*/, SECONDS, queue, threadFactory, policy);
-      executor.allowCoreThreadTimeOut(true);
+      executor.allowCoreThreadTimeOut(true);    // 支持核心线程空闲过期
       return executor;
    }
 
@@ -138,9 +138,9 @@ public final class UtilityElf
       if (threadFactory == null) {
          threadFactory = new DefaultThreadFactory(threadName, true);
       }
-
+      // 核心：1，最大：1，5s 闲置时间（allowCoreThreadTimeOut 允许核心线程回收），队列长度 maxPoolSize，拒绝策略：丢弃最老任务
       ThreadPoolExecutor executor = new ThreadPoolExecutor(1 /*core*/, 1 /*max*/, 5 /*keepalive*/, SECONDS, queue, threadFactory, policy);
-      executor.allowCoreThreadTimeOut(true);
+      executor.allowCoreThreadTimeOut(true);    // 支持核心线程过期
       return executor;
    }
 
