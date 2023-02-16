@@ -82,9 +82,9 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
 
     private static final String EVICTED_CONNECTION_MESSAGE = "(connection was evicted)";
     private static final String DEAD_CONNECTION_MESSAGE = "(connection is dead)";
-
-    private final PoolEntryCreator poolEntryCreator = new PoolEntryCreator(null /*logging prefix*/);
-    private final PoolEntryCreator postFillPoolEntryCreator = new PoolEntryCreator("After adding ");
+    // 一个创建 PoolEntry 的 Callable 任务
+    private final PoolEntryCreator poolEntryCreator = new PoolEntryCreator(null /*logging prefix*/);       // 新增连接任务
+    private final PoolEntryCreator postFillPoolEntryCreator = new PoolEntryCreator("After adding ");    // ??
     private final Collection<Runnable> addConnectionQueueReadOnlyView;
 
     // 1-1，5s 核心线程空闲过期
@@ -325,8 +325,13 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
      */
     @Override
     public void addBagItem(final int waiting) {
+        // waiting：代表当前正在等待获取 PoolEntry 的线程数（一个非精确数，因为等待线程的数量时刻在变化）
+        // addConnectionQueueReadOnlyView：addConnectionExecutor 任务队列元素个数，也就是待获取连接的任务有几个。
+        // 也就是：得添加至少 waiting 个获取链接的任务 ( poolEntryCreator )
         final boolean shouldAdd = waiting - addConnectionQueueReadOnlyView.size() >= 0; // Yes, >= is intentional.
         if (shouldAdd) {
+            // this.addConnectionExecutor = createThreadPoolExecutor(addConnectionQueue, poolName + " connection adder", threadFactory, new ThreadPoolExecutor.DiscardOldestPolicy());
+            /** {@link HikariPool.PoolEntryCreator#call} */
             addConnectionExecutor.submit(poolEntryCreator);
         } else {
             logger.debug("{} - Add connection elided, waiting {}, queue {}", poolName, waiting, addConnectionQueueReadOnlyView.size());
@@ -698,11 +703,12 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
 
         @Override
         public Boolean call() {
-            long sleepBackoff = 250L;
+            long sleepBackoff = 250L;                                   // 递增睡眠退避
+            // 判断连接池，是否需要添加 poolEntry
             while (poolState == POOL_NORMAL && shouldCreateAnotherConnection()) {
-                final PoolEntry poolEntry = createPoolEntry();
+                final PoolEntry poolEntry = createPoolEntry();          // =>> 2、addBagItem(..);
                 if (poolEntry != null) {
-                    connectionBag.add(poolEntry);
+                    connectionBag.add(poolEntry);                       // sharedList.add(bagEntry);
                     logger.debug("{} - Added connection {}", poolName, poolEntry.connection);
                     if (loggingPrefix != null) {
                         logPoolState(loggingPrefix);
@@ -713,7 +719,7 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
                 // failed to get connection from db, sleep and retry
                 if (loggingPrefix != null)
                     logger.debug("{} - Connection add failed, sleeping with backoff: {}ms", poolName, sleepBackoff);
-                quietlySleep(sleepBackoff);
+                quietlySleep(sleepBackoff);                     // 获取失败，则睡眠，最大不会超过 10s
                 sleepBackoff = Math.min(SECONDS.toMillis(10), Math.min(connectionTimeout, (long) (sleepBackoff * 1.5)));
             }
 
@@ -728,15 +734,17 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
          * @return true if we should create a connection, false if the need has disappeared
          */
         private synchronized boolean shouldCreateAnotherConnection() {
+            // 连接池未达到上限，并且 ( 存在等待获取 conn 的线程 | 未达到空闲数量上限 )
             return getTotalConnections() < config.getMaximumPoolSize() &&
                     (connectionBag.getWaitingThreadCount() > 0 || getIdleConnections() < config.getMinimumIdle());
         }
     }
 
     /**
+     * 用于停用和维护最小空闲连接的内务管理任务
      * The house keeping task to retire and maintain minimum idle connections.
      */
-    private final class HouseKeeper implements Runnable {
+    private final class HouseKeeper implements Runnable {       // 检测到时钟倒推，关闭所有连接
         private volatile long previous = plusMillis(currentTime(), -housekeepingPeriodMs);
 
         @Override
@@ -756,7 +764,7 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
                     logger.warn("{} - Retrograde clock change detected (housekeeper delta={}), soft-evicting connections from pool.",
                             poolName, elapsedDisplayString(previous, now));
                     previous = now;
-                    softEvictConnections();
+                    softEvictConnections();     // TODO：???
                     return;
                 } else if (now > plusMillis(previous, (3 * housekeepingPeriodMs) / 2)) {
                     // No point evicting for forward clock motion, this merely accelerates connection retirement anyway
