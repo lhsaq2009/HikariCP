@@ -54,19 +54,21 @@ import static java.util.concurrent.locks.LockSupport.parkNanos;
  *
  * @param <T> the templated type to store in the bag
  * @author Brett Wooldridge
+ * <p>
+ * ConcurrentBag 是 HikariCP 中实现的一个无锁化集合，比 JDK 中的 LinkedBlockingQueue 和 LinkedTransferQueue 的性能更好。
  */
-public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseable {
+public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseable {        // 一个 lock-free 集合
     private static final Logger LOGGER = LoggerFactory.getLogger(ConcurrentBag.class);
 
-    private final CopyOnWriteArrayList<T> sharedList;
-    private final boolean weakThreadLocals;
+    private final CopyOnWriteArrayList<T> sharedList;           // 负责存放全部用于出借的资源
+    private final boolean weakThreadLocals;                     // 是否使用弱引用
 
-    private final ThreadLocal<List<Object>> threadList;
-    private final IBagStateListener listener;
-    private final AtomicInteger waiters;
-    private volatile boolean closed;
+    private final ThreadLocal<List<Object>> threadList;         // 线程本地缓存，用于加速线程本地化资源访问
+    private final IBagStateListener listener;                   // 添加元素的监听器，在 HikariPool 中实现
+    private final AtomicInteger waiters;                        // 当前等待获取元素的线程数
+    private volatile boolean closed;                            // ConcurrentBag 是否处于关于状态
 
-    private final SynchronousQueue<T> handoffQueue;
+    private final SynchronousQueue<T> handoffQueue;             // 接力队列，用于存在资源等待线程时的第一手资源交接
 
     public interface IConcurrentBagEntry {
         int STATE_NOT_IN_USE = 0;
@@ -74,7 +76,8 @@ public class ConcurrentBag<T extends IConcurrentBagEntry> implements AutoCloseab
         int STATE_REMOVED = -1;
         int STATE_RESERVED = -2;
 
-        boolean compareAndSet(int expectState, int newState);
+
+        boolean compareAndSet(int expectState, int newState);   // CAS 对链接状态的操作
 
         void setState(int newState);
 
