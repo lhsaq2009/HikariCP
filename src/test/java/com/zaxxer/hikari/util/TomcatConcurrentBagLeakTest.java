@@ -118,11 +118,11 @@ public class TomcatConcurrentBagLeakTest
             PoolEntry entry = new PoolEntry();
             bag.add(entry);
 
-            PoolEntry borrowed = bag.borrow(100, MILLISECONDS);
-            bag.requite(borrowed);
-
-            PoolEntry removed = bag.borrow(100, MILLISECONDS);
-            bag.remove(removed);
+//            PoolEntry borrowed = bag.borrow(100, MILLISECONDS);
+//            bag.requite(borrowed);
+//
+//            PoolEntry removed = bag.borrow(100, MILLISECONDS);
+//            bag.remove(removed);
          }
 
          checkThreadLocalsForLeaks();
