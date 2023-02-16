@@ -274,7 +274,7 @@ public abstract class ProxyConnection implements Connection
          }
          finally {
             delegate = ClosedConnection.CLOSED_CONNECTION;
-            poolEntry.recycle(lastAccess);
+            poolEntry.recycle(lastAccess);         // =>> 归还链接
          }
       }
    }
