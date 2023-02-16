@@ -465,17 +465,20 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
      */
     private PoolEntry createPoolEntry() {
         try {
-            final PoolEntry poolEntry = newPoolEntry();
+            final PoolEntry poolEntry = newPoolEntry();     // =>> dataSource.getConnection()
 
             final long maxLifetime = config.getMaxLifetime();
             if (maxLifetime > 0) {
                 // variance up to 2.5% of the maxlifetime
+                // 计算 lifetime 会在 maxLifetime 的基础上减去一个随机数，防止同一时间大量连接被关闭
                 final long variance = maxLifetime > 10_000 ? ThreadLocalRandom.current().nextLong(maxLifetime / 40) : 0;
                 final long lifetime = maxLifetime - variance;
-                poolEntry.setFutureEol(houseKeepingExecutorService.schedule(
+                // 延时任务：连接 MaxLifeTime 到期后，重新创建连接
+                poolEntry.setFutureEol(houseKeepingExecutorService.schedule(        // 2、每个连接添加延时重新获取任务
                         () -> {
+                            // 软驱逐，前面讲过，如果 entry 的状态改为 reserve 成功，这里会关闭连接
                             if (softEvictConnection(poolEntry, "(connection has passed maxLifetime)", false /* not owner */)) {
-                                addBagItem(connectionBag.getWaitingThreadCount());
+                                addBagItem(connectionBag.getWaitingThreadCount());  // 通知 HikariPool 增加元素
                             }
                         },
                         lifetime, MILLISECONDS));
