@@ -82,7 +82,7 @@ public class HikariDataSource extends HikariConfig implements DataSource, Closea
       configuration.copyStateTo(this);                      //
 
       LOGGER.info("{} - Starting...", configuration.getPoolName());
-      pool = fastPathPool = new HikariPool(this);
+      pool = fastPathPool = new HikariPool(this);            // 1 有参 HikariDataSource(..)
       LOGGER.info("{} - Start completed.", configuration.getPoolName());
 
       this.seal();
@@ -100,8 +100,8 @@ public class HikariDataSource extends HikariConfig implements DataSource, Closea
          throw new SQLException("HikariDataSource " + this + " has been closed.");
       }
 
-      if (fastPathPool != null) {
-         return fastPathPool.getConnection();
+         if (fastPathPool != null) {
+            return fastPathPool.getConnection();         // =>> 1
       }
 
       // See http://en.wikipedia.org/wiki/Double-checked_locking#Usage_in_Java
@@ -113,7 +113,7 @@ public class HikariDataSource extends HikariConfig implements DataSource, Closea
                validate();
                LOGGER.info("{} - Starting...", getPoolName());
                try {
-                  pool = result = new HikariPool(this);
+                  pool = result = new HikariPool(this);        // 2 无参 HikariDataSource().getConnection()
                   this.seal();
                }
                catch (PoolInitializationException pie) {
